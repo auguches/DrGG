@@ -146,8 +146,8 @@
     },
     {
       "id": "8",
-      "name": "Qdrant Vector Store (Upsert)",
-      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "name": "Simple Vector Store (Upsert)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
       "typeVersion": 1,
       "position": [
         180,
@@ -155,16 +155,7 @@
       ],
       "parameters": {
         "mode": "insert",
-        "collectionName": "drive_docs_knowledge",
-        "options": {
-          "clearCollectionBeforeInsert": false
-        }
-      },
-      "credentials": {
-        "qdrantApi": {
-          "id": "REPLACE_WITH_YOUR_QDRANT_CREDENTIAL_ID",
-          "name": "Qdrant API"
-        }
+        "options": {}
       }
     },
     {
@@ -237,8 +228,8 @@
     },
     {
       "id": "12",
-      "name": "Qdrant Vector Store (Retriever Tool)",
-      "type": "@n8n/n8n-nodes-langchain.vectorStoreQdrant",
+      "name": "Simple Vector Store (Retriever Tool)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
       "typeVersion": 1,
       "position": [
         -220,
@@ -246,15 +237,9 @@
       ],
       "parameters": {
         "mode": "retrieve-as-tool",
-        "collectionName": "drive_docs_knowledge",
         "toolName": "drive_knowledge_base",
-        "toolDescription": "Use this tool to answer questions based on Google Drive documents."
-      },
-      "credentials": {
-        "qdrantApi": {
-          "id": "REPLACE_WITH_YOUR_QDRANT_CREDENTIAL_ID",
-          "name": "Qdrant API"
-        }
+        "toolDescription": "Use this tool to answer questions based on Google Drive documents.",
+        "topK": 4
       }
     },
     {
@@ -368,13 +353,7 @@
             "index": 0
           }
         ],
-        [
-          {
-            "node": "Split In Batches (Docs)",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Google Drive - Download Doc": {
@@ -392,7 +371,7 @@
       "main": [
         [
           {
-            "node": "Qdrant Vector Store (Upsert)",
+            "node": "Simple Vector Store (Upsert)",
             "type": "main",
             "index": 0
           }
@@ -403,7 +382,7 @@
       "ai_textSplitter": [
         [
           {
-            "node": "Qdrant Vector Store (Upsert)",
+            "node": "Simple Vector Store (Upsert)",
             "type": "ai_textSplitter",
             "index": 0
           }
@@ -414,7 +393,7 @@
       "ai_embedding": [
         [
           {
-            "node": "Qdrant Vector Store (Upsert)",
+            "node": "Simple Vector Store (Upsert)",
             "type": "ai_embedding",
             "index": 0
           }
@@ -454,17 +433,6 @@
         ]
       ]
     },
-    "Qdrant Vector Store (Retriever Tool)": {
-      "ai_tool": [
-        [
-          {
-            "node": "AI Agent",
-            "type": "ai_tool",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "AI Agent": {
       "main": [
         [
@@ -482,6 +450,28 @@
           {
             "node": "Postgres - Save Outbound",
             "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Vector Store (Upsert)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (Docs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Vector Store (Retriever Tool)": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
             "index": 0
           }
         ]
