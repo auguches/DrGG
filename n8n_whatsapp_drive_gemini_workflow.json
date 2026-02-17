@@ -1,0 +1,490 @@
+{
+  "name": "WhatsApp + Drive + Gemini Knowledge Assistant",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Manual Trigger (Ingest Docs)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1160,
+        -260
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "2",
+      "name": "Google Drive - List Docs",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -940,
+        -260
+      ],
+      "parameters": {
+        "resource": "fileFolder",
+        "operation": "search",
+        "queryString": "mimeType='application/vnd.google-apps.document' and trashed=false",
+        "returnAll": true
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "id": "3",
+      "name": "Split In Batches (Docs)",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -720,
+        -260
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "4",
+      "name": "Google Drive - Download Doc",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -500,
+        -260
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "download",
+        "fileId": {
+          "mode": "expression",
+          "value": "={{ $json.id }}"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "docsToFormat": "text/plain"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_GOOGLE_DRIVE_CREDENTIAL_ID",
+          "name": "Google Drive OAuth2"
+        }
+      }
+    },
+    {
+      "id": "5",
+      "name": "Default Data Loader",
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.2,
+      "position": [
+        -280,
+        -260
+      ],
+      "parameters": {
+        "dataType": "binary",
+        "binaryDataKey": "data",
+        "options": {
+          "metadata": {
+            "metadataValues": [
+              {
+                "name": "source",
+                "value": "={{ $item(0).$node[\"Google Drive - Download Doc\"].json.name || $item(0).$node[\"Google Drive - Download Doc\"].json.id }}"
+              },
+              {
+                "name": "fileId",
+                "value": "={{ $item(0).$node[\"Google Drive - Download Doc\"].json.id }}"
+              },
+              {
+                "name": "lastModified",
+                "value": "={{ $item(0).$node[\"Google Drive - Download Doc\"].json.modifiedTime || '' }}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "6",
+      "name": "Recursive Text Splitter",
+      "type": "@n8n/n8n-nodes-langchain.textSplitterRecursiveCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -420
+      ],
+      "parameters": {
+        "chunkSize": 1200,
+        "chunkOverlap": 150
+      }
+    },
+    {
+      "id": "7",
+      "name": "Gemini Embeddings",
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -120
+      ],
+      "parameters": {
+        "modelName": "models/text-embedding-004"
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_GEMINI_CREDENTIAL_ID",
+          "name": "Gemini API"
+        }
+      }
+    },
+    {
+      "id": "8",
+      "name": "Simple Vector Store (Upsert)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1,
+      "position": [
+        180,
+        -260
+      ],
+      "parameters": {
+        "mode": "insert",
+        "options": {}
+      }
+    },
+    {
+      "id": "9",
+      "name": "WhatsApp Trigger",
+      "type": "n8n-nodes-base.whatsAppTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1160,
+        300
+      ],
+      "parameters": {
+        "updates": [
+          "messages"
+        ],
+        "options": {}
+      },
+      "credentials": {
+        "whatsAppTriggerApi": {
+          "id": "REPLACE_WITH_YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Cloud"
+        }
+      }
+    },
+    {
+      "id": "10",
+      "name": "Postgres - Save Inbound",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -920,
+        300
+      ],
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "conversation_messages",
+        "columns": "conversation_id, direction, channel, sender_id, recipient_id, message_text, message_id, created_at",
+        "additionalFields": {},
+        "values": "={{ [\n  ($json.contacts?.[0]?.wa_id || $json.messages?.[0]?.from || 'unknown') + '-' + (new Date().toISOString().slice(0,10)),\n  'inbound',\n  'whatsapp',\n  ($json.messages?.[0]?.from || ''),\n  ($json.metadata?.phone_number_id || ''),\n  ($json.messages?.[0]?.text?.body || ''),\n  ($json.messages?.[0]?.id || ''),\n  new Date().toISOString()\n] }}"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "11",
+      "name": "Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -420,
+        520
+      ],
+      "parameters": {
+        "modelName": "models/gemini-1.5-pro",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "googlePalmApi": {
+          "id": "REPLACE_WITH_YOUR_GEMINI_CREDENTIAL_ID",
+          "name": "Gemini API"
+        }
+      }
+    },
+    {
+      "id": "12",
+      "name": "Simple Vector Store (Retriever Tool)",
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreInMemory",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        520
+      ],
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolName": "drive_knowledge_base",
+        "toolDescription": "Use this tool to answer questions based on Google Drive documents.",
+        "topK": 4
+      }
+    },
+    {
+      "id": "13",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [
+        -420,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.messages?.[0]?.text?.body || 'No user text provided' }}",
+        "options": {
+          "systemMessage": "You are a WhatsApp assistant that answers using the company documents in Google Drive. Use the vector store tool for factual answers. If information is missing, say you could not find it in the documents. Reply in the same language as the user."
+        }
+      }
+    },
+    {
+      "id": "14",
+      "name": "WhatsApp - Send Reply",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [
+        -160,
+        300
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "recipientPhoneNumber": "={{ $json.messages?.[0]?.from }}",
+        "messageType": "text",
+        "textBody": "={{ $json.output || $json.text || 'Sorry, I could not generate a response.' }}"
+      },
+      "credentials": {
+        "whatsAppApi": {
+          "id": "REPLACE_WITH_YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Cloud"
+        }
+      }
+    },
+    {
+      "id": "15",
+      "name": "Postgres - Save Outbound",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        80,
+        300
+      ],
+      "parameters": {
+        "operation": "insert",
+        "schema": "public",
+        "table": "conversation_messages",
+        "columns": "conversation_id, direction, channel, sender_id, recipient_id, message_text, message_id, created_at",
+        "values": "={{ [\n  ($item(0).$node[\"WhatsApp Trigger\"].json.contacts?.[0]?.wa_id || $item(0).$node[\"WhatsApp Trigger\"].json.messages?.[0]?.from || 'unknown') + '-' + (new Date().toISOString().slice(0,10)),\n  'outbound',\n  'whatsapp',\n  ($item(0).$node[\"WhatsApp Trigger\"].json.metadata?.phone_number_id || ''),\n  ($item(0).$node[\"WhatsApp Trigger\"].json.messages?.[0]?.from || ''),\n  ($item(0).$node[\"AI Agent\"].json.output || $item(0).$node[\"AI Agent\"].json.text || ''),\n  ($json.messages?.[0]?.id || ''),\n  new Date().toISOString()\n] }}"
+      },
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_YOUR_POSTGRES_CREDENTIAL_ID",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "16",
+      "name": "Note - One-time DB setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1160,
+        560
+      ],
+      "parameters": {
+        "width": 580,
+        "height": 210,
+        "content": "Run once in Postgres:\n\nCREATE TABLE IF NOT EXISTS conversation_messages (\n  id bigserial PRIMARY KEY,\n  conversation_id text NOT NULL,\n  direction text NOT NULL,\n  channel text NOT NULL DEFAULT 'whatsapp',\n  sender_id text,\n  recipient_id text,\n  message_text text,\n  message_id text,\n  created_at timestamptz NOT NULL DEFAULT now()\n);\n\nTip: You can add an index on (conversation_id, created_at)."
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger (Ingest Docs)": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - List Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - List Docs": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (Docs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split In Batches (Docs)": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Download Doc",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Google Drive - Download Doc": {
+      "main": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "main": [
+        [
+          {
+            "node": "Simple Vector Store (Upsert)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recursive Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Simple Vector Store (Upsert)",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Embeddings": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Simple Vector Store (Upsert)",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Trigger": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Save Inbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Save Inbound": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp - Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp - Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Save Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Vector Store (Upsert)": {
+      "main": [
+        [
+          {
+            "node": "Split In Batches (Docs)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Vector Store (Retriever Tool)": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "instanceId": "replace-in-your-n8n-instance"
+  },
+  "tags": []
+}
